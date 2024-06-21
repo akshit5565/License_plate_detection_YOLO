@@ -1,30 +1,67 @@
 import streamlit as st
 import cv2
 import numpy as np
-from ultralytics import YOLO
 from PIL import Image
 import os
 import pytesseract
 import re
+import sqlite3
+import ssl
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from datetime import datetime
+from ultralytics import YOLO
 
 # Ensure temp directory exists
 if not os.path.exists("temp"):
     os.makedirs("temp")
 
-# Set the title of the Streamlit app
-st.title("YOLO Image and Video Processing")
+# Initialize the SQLite database
+conn = sqlite3.connect('car_db.db')
+c = conn.cursor()
+c.execute('''CREATE TABLE IF NOT EXISTS car_info (
+             car_number TEXT PRIMARY KEY,
+             name TEXT,
+             phone_number TEXT,
+             email TEXT)''')
+conn.commit()
+conn.close()
 
-# Allow users to upload images or videos
-uploaded_file = st.file_uploader("Upload an image or video", type=["jpg", "jpeg", "png", "bmp", "mp4", "avi", "mov", "mkv"])
 
-# Load YOLO model
-try:
-    model = YOLO("C:/Users/Akshit/Desktop/license_plate/best.pt")  # Replace with the path to your trained YOLO model
-except Exception as e:
-    st.error(f"Error loading YOLO model: {e}")
+# Email configuration (Gmail example)
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_ADDRESS = 'akshitgarg1616@gmail.com'  # Replace with your Gmail address
+EMAIL_PASSWORD = 'zcaa cktg kdcm lmqb'  # Replace with your Gmail app password
 
-# Specify the path to the Tesseract executable
+def send_email(receiver_email, subject, message):
+    try:
+        # Create a secure SSL context
+        context = ssl.create_default_context()
+        
+        # Connect to the SMTP server
+        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+            server.starttls(context=context)
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            
+            # Create email message
+            email = MIMEMultipart()
+            email['From'] = EMAIL_ADDRESS
+            email['To'] = receiver_email
+            email['Subject'] = subject
+            email.attach(MIMEText(message, 'plain'))
+            
+            # Send email
+            server.sendmail(EMAIL_ADDRESS, receiver_email, email.as_string())
+        
+        return True
+    except Exception as e:
+        st.error(f"Error sending email: {e}")
+        return False
+    
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Update the path as needed
+
 
 def clean_text(text):
     """Remove special characters from text."""
@@ -33,9 +70,12 @@ def clean_text(text):
 def predict_and_save_image(path_test_car, output_image_path):
     detected_texts = []
     try:
+        # Perform object detection with YOLO
         results = model.predict(path_test_car, device='cpu')
         image = cv2.imread(path_test_car)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        # Process each detected bounding box
         for result in results:
             for box in result.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -61,6 +101,7 @@ def predict_and_save_image(path_test_car, output_image_path):
 def predict_and_plot_video(video_path, output_path):
     detected_texts = []
     try:
+        # Open video file and initialize video writer
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             st.error(f"Error opening video file: {video_path}")
@@ -70,12 +111,16 @@ def predict_and_plot_video(video_path, output_path):
         fps = int(cap.get(cv2.CAP_PROP_FPS))
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
+        
+        # Process each frame in the video
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = model.predict(rgb_frame, device='cpu')
+            
+            # Process each detected bounding box in the frame
             for result in results:
                 for box in result.boxes:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -92,6 +137,8 @@ def predict_and_plot_video(video_path, output_path):
                     detected_texts.append(cleaned_text)
 
             out.write(frame)
+        
+        # Release video capture and writer
         cap.release()
         out.release()
         return output_path, detected_texts
@@ -108,6 +155,18 @@ def process_media(input_path, output_path):
     else:
         st.error(f"Unsupported file type: {file_extension}")
         return None, None
+
+# Load YOLO model
+try:
+    model = YOLO("C:/Users/Akshit/Desktop/license_plate/best.pt")  # Replace with the path to your trained YOLO model
+except Exception as e:
+    st.error(f"Error loading YOLO model: {e}")
+
+# Set the title of the Streamlit app
+st.title("YOLO Image and Video Processing")
+
+# Allow users to upload images or videos
+uploaded_file = st.file_uploader("Upload an image or video", type=["jpg", "jpeg", "png", "bmp", "mp4", "avi", "mov", "mkv"])
 
 if uploaded_file is not None:
     input_path = os.path.join("temp", uploaded_file.name)
@@ -126,9 +185,46 @@ if uploaded_file is not None:
                 st.image(result_path)
 
             if detected_texts:
-                st.subheader("Vehicle Numbers")
+                st.subheader("Detected Vehicle Numbers")
                 for text in detected_texts:
-                    st.markdown(f"<div style='border: 2px solid #4CAF50; padding: 10px; margin-bottom: 10px; max-width: 140px; word-wrap: break-word;'>{text}</div>", unsafe_allow_html=True)
+                    st.markdown(f"Detected Vehicle Number: **{text}**")
 
+                    # Check if the vehicle number is in the database
+                    conn = sqlite3.connect('car_db.db')
+                    c = conn.cursor()
+                    c.execute('''SELECT * FROM car_info WHERE car_number = ?''', (text,))
+                    car_info = c.fetchone()
+                    
+                    if car_info:
+                        st.write(f"Car found in database: {car_info}")
+                        fine_amount = st.number_input(f"Enter fine amount for {text}", min_value=0)
+                        if st.button(f"Send Fine via Email to {car_info[3]}"):
+                            message = f"You have been fined {fine_amount} for breaking traffic rules."
+                            send_result = send_email(car_info[3], "Traffic Fine Notification", message)
+                            if send_result:
+                                st.success("Fine sent successfully via email.")
+                            else:
+                                st.error("Failed to send fine via email. Please check your email configuration.")
+                    else:
+                        st.write(f"Car {text} not found in database.")
+                        name = st.text_input(f"Enter name for {text}")
+                        phone_number = st.text_input(f"Enter phone number for {text}")
+                        email = st.text_input(f"Enter email address for {text}")
+                        if st.button(f"Register {text}"):
+                            # Insert car info into database
+                            conn = sqlite3.connect('car_db.db')
+                            c = conn.cursor()
+                            c.execute('''INSERT INTO car_info (car_number, name, phone_number, email) VALUES (?, ?, ?, ?)''',
+                                      (text, name, phone_number, email))
+                            conn.commit()
+                            conn.close()
+                            fine_amount = st.number_input(f"Enter fine amount for {text}", min_value=0)
+                        if st.button(f"Send Fine via Email to {car_info[3]}"):
+                            message = f"You have been fined {fine_amount} for breaking traffic rules."
+                            send_result = send_email(car_info[3], "Traffic Fine Notification", message)
+                            if send_result:
+                                st.success("Fine sent successfully via email.")
+                            else:
+                                st.error("Failed to send fine via email. Please check your email configuration.")
     except Exception as e:
         st.error(f"Error uploading or processing file: {e}")
