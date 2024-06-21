@@ -6,3 +6,4 @@ opencv-python
 ultralytics
 easyocr
 pytesseract
+python-decouple
