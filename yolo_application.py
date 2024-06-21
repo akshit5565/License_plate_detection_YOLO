@@ -12,6 +12,12 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from ultralytics import YOLO
+from decouple import config
+
+JWT_EMAIL_HOST = config("EMAIL_HOST")
+JWT_EMAIL_PORT = config("EMAIL_PORT")
+JWT_EMAIL_ADDRESS = config("EMAIL_ADDRESS")
+JWT_EMAIL_PASSWORD = config("EMAIL_PASSWORD")
 
 # Ensure temp directory exists
 if not os.path.exists("temp"):
@@ -29,31 +35,25 @@ conn.commit()
 conn.close()
 
 
-# Email configuration (Gmail example)
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_ADDRESS = 'akshitgarg1616@gmail.com'  # Replace with your Gmail address
-EMAIL_PASSWORD = 'zcaa cktg kdcm lmqb'  # Replace with your Gmail app password
-
 def send_email(receiver_email, subject, message):
     try:
         # Create a secure SSL context
         context = ssl.create_default_context()
         
         # Connect to the SMTP server
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+        with smtplib.SMTP(JWT_EMAIL_HOST, JWT_EMAIL_PORT) as server:
             server.starttls(context=context)
-            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.login(JWT_EMAIL_ADDRESS, JWT_EMAIL_PASSWORD)
             
             # Create email message
             email = MIMEMultipart()
-            email['From'] = EMAIL_ADDRESS
+            email['From'] = JWT_EMAIL_ADDRESS
             email['To'] = receiver_email
             email['Subject'] = subject
             email.attach(MIMEText(message, 'plain'))
             
             # Send email
-            server.sendmail(EMAIL_ADDRESS, receiver_email, email.as_string())
+            server.sendmail(JWT_EMAIL_ADDRESS, receiver_email, email.as_string())
         
         return True
     except Exception as e:
