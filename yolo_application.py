@@ -161,6 +161,19 @@ try:
 except Exception as e:
     st.error(f"Error loading YOLO model: {e}")
 
+# uploaded_model_file = st.file_uploader("Upload your YOLO model", type=["pt", "pth"])
+
+
+# if uploaded_model_file is not None:
+#     try:
+#         model_path = os.path.join("temp", uploaded_model_file.name)
+#         with open(model_path, "wb") as f:
+#             f.write(uploaded_model_file.getbuffer())
+#         model = YOLO(model_path)
+#         st.success("Model uploaded and loaded successfully!")
+#     except Exception as e:
+#         st.error(f"Error loading YOLO model: {e}")
+
 # Set the title of the Streamlit app
 st.title("YOLO Image and Video Processing")
 
